@@ -15,6 +15,13 @@ HAN has the potential to be used as a rocket propellant, either in monopropellan
 
 Best is HIPEP = HAN + Poly(vinyl alcohol) (PVOH, PVA, or PVAl) made by DSSB in Reno USA.
 
+The production of electric solid propellants (ESPs) is likely to be a specialized process that requires specific equipment and expertise. To make ESPs, the ingredients (hydroxyl ammonium nitrate and polyvinyl alcohol) are first weighed and mixed together in the appropriate ratio to form a plastisol. The mixture is then shaped and cured into the desired form, which could be a solid block, a granulated powder, or some other shape depending on the intended use.
+
+The exact process for shaping and curing the ESP will depend on the specific formulation and the equipment being used. For example, the mixture may be pressed into a mold, extruded through a die, or poured into a tray to set. Once the ESP has been shaped and cured, it is ready for use as a rocket propellant.
+
+It is worth noting that the production of ESPs is likely to be a complex and specialized process that requires specific equipment and expertise. The materials required to make ESPs are also not widely available and may require an ATF (Alcohol, Tobacco, and Firearms) license to purchase. There is only one company in the world that produces ESPs, called DSSB, based in Reno. As such, it is not something that can be easily done by the average individual. For now.
+
+
 
 
 ## preparation of hydroxylamine nitrate (HAN) 
