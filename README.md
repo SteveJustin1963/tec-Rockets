@@ -16,7 +16,8 @@ HAN has the potential to be used as a rocket propellant, either in monopropellan
 ## Alternative to hydrazine 
 - is GEM made by DSSB, (G63-1)
 - High Performance Green Propulsion (HPGP) fuel that is based on ammonium dinitrimide.
-- 
+- https://github.com/SteveJustin1963/tec-Rockets/blob/main/docs/Werling_JPC_Paper_2017_26.07.2017.pdf
+
 
 
 
