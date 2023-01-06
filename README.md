@@ -13,7 +13,8 @@ Hydroxylammonium nitrate (HAN) is an inorganic compound that is a salt derived f
 
 HAN has the potential to be used as a rocket propellant, either in monopropellant or bipropellant form. It has been suggested that HAN-based propellants could be a good choice for "green" rocket missions, as they offer 50% higher performance for a given propellant tank compared to hydrazine, a commonly used rocket propellant.
 
-Best is HIPEP = HAN + Poly(vinyl alcohol) (PVOH, PVA, or PVAl) 
+Best is HIPEP = HAN + Poly(vinyl alcohol) (PVOH, PVA, or PVAl) made by DSSB in Reno USA.
+
 
 
 ## preparation of hydroxylamine nitrate (HAN) 
