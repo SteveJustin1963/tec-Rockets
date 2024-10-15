@@ -1,5 +1,5 @@
 # TEC-1 controlled ESP
-
+ 
 ## Electric solid propellants START-CONTROL-STOP-REPEAT
 
 "Electric solid propellants (ESPs) are a family of high performance plastisol solid propellants that can be ignited and throttled by the application of electric current. Unlike conventional rocket motor propellants that are difficult to control and extinguish, ESPs can be ignited reliably at precise intervals and durations. It requires no moving parts and the propellant is insensitive to flames or electrical sparks.[wiki 36]"
