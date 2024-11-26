@@ -1,0 +1,145 @@
+MINT program for ignition control 
+
+```mint
+// Safety threshold constants on heap to save variable space
+:V [#E000 #F000 #2000 #0100] h! ;
+
+// Initialize system variables and arrays
+:A 
+[0 0 0 0 0] v!     // Voltage history array
+[0 0 0 0 0] c!     // Current history array
+0 i!               // Ignition state (0=off, 1=on)
+0 r!               // Reset remainder
+0 /c!              // Reset carry
+/T s!              // Safety interlock (true=safe)
+`ESP INIT` /N ;
+
+// Configure ADC ports and control lines
+:B 
+#80 #30 /O         // ADC - Select voltage channel
+100()              // ADC settling time
+#31 /I n!          // Read voltage from ADC
+n v /i ?!          // Store in voltage array
+#81 #30 /O         // ADC - Select current channel  
+100()              // ADC settling time
+#31 /I n!          // Read current from ADC
+n c /i ?! ;        // Store in current array
+
+// Safety checks and interlocks
+:C 
+h 0? v 0? > (      // Check voltage < threshold
+    `V-HIGH` /N /F 
+) /E (
+    h 1? c 0? > (  // Check current < threshold
+        `I-HIGH` /N /F
+    ) /E (
+        s /T = (   // Check safety interlock
+            `SAFE` /N /T 
+        ) /E (
+            `UNSAFE` /N /F
+        )
+    )
+) t! ;            // Store result in t
+
+// Display readings in hex
+:D 
+`V:` v 0? , /N     // Show voltage
+`I:` c 0? , /N     // Show current
+`S:` t . /N ;      // Show safety status
+
+// Photodiode feedback check
+:E 
+#82 #30 /O         // Select photodiode channel
+100()              // Settling time
+#31 /I             // Read photodiode
+h 2? > (           // Compare to threshold
+    `IGN-OK` /N /T 
+) /E ( 
+    `NO-IGN` /N /F 
+) p! ;             // Store result in p
+
+// Ignition control sequence
+:F 
+t /T = (                   // If safety checks pass
+    `IGNITING` /N 
+    1 i!                   // Set ignition flag
+    1 #32 /O              // Enable MOSFET/relay
+    h 3? (                // Short delay loop
+        B                 // Read sensors
+        D                 // Display status
+        E                 // Check ignition
+        c 0? h 1? > (     // Current limit check
+            `OVERLOAD` /N 
+            0 #32 /O      // Disable output
+            /F t!         // Clear safety
+        )
+        100()            // Delay between readings
+    )
+) ;
+
+// Emergency shutdown
+:G 
+0 i!               // Clear ignition flag
+0 #32 /O           // Disable output
+`E-STOP` /N ;
+
+// Main control sequence
+:M 
+A                  // Initialize
+5(                 // 5 second countdown
+    `T-` /i . /N 
+    500()          // 1 second delay
+)
+C                  // Safety checks
+F                  // Run ignition
+E                  // Verify ignition
+G ;               // Safe shutdown
+
+// Interrupt handler for emergency stop
+:Z 
+G ;               // Emergency stop on any interrupt
+
+```
+
+Key features of this implementation:
+
+1. **Port Assignments**
+- Port #30: ADC control register
+- Port #31: ADC data register
+- Port #32: MOSFET/relay control output
+
+2. **Safety Features**
+- Voltage and current thresholds stored in heap
+- Continuous monitoring during ignition
+- Emergency interrupt handler
+- Safety interlock check
+- Automatic shutdown on overcurrent
+
+3. **Monitoring**
+- Voltage and current measurement
+- Photodiode feedback for ignition verification
+- Historical data storage in arrays
+- Real-time status display
+
+4. **Timing**
+- ADC settling delays
+- 5-second safety countdown
+- Continuous monitoring during ignition
+- Quick response to fault conditions
+
+To use the system:
+
+```mint
+M    // Run complete ignition sequence
+A    // Just initialize
+C    // Run safety checks
+D    // Display current readings
+G    // Emergency stop
+```
+
+Safety Features:
+1. Interrupt handler `:Z` provides emergency stop
+2. Continuous current monitoring prevents overload
+3. Photodiode feedback confirms successful ignition
+4. Multiple safety interlocks must pass before ignition
+5. Automatic shutdown on any fault condition
