@@ -1,0 +1,177 @@
+  MINT program for temperature monitoring with safety features and data logging capability.
+
+```mint
+// Constants array on heap
+:A [
+    #0190          // 400°C max temp threshold
+    #012C          // 300°C warning threshold
+    #0064          // 100°C minimum valid temp
+    #0014          // 20 sample history
+    #0002          // ADC conversion factor
+] h! ;
+
+// Initialize system
+:B 
+[0 0 0 0 0        // Temperature history array (expand as needed)
+ 0 0 0 0 0
+ 0 0 0 0 0
+ 0 0 0 0 0] t!   // Store in t
+0 c!              // Current temperature
+0 p!              // Peak temperature
+/T s!             // System status (True=OK)
+`TEMP INIT` /N ;
+
+// Read temperature from ADC with noise filtering
+:C
+0 n!              // Reset sum
+5(                // Average 5 readings
+    #80 #30 /O    // Select temp channel
+    100()         // ADC settling
+    #31 /I        // Read ADC
+    n + n!        // Add to sum
+    50()          // Delay between readings
+)
+n 5 / c!          // Store average
+c h 4? * c!       // Apply conversion factor
+c t /i ?!         // Store in history array
+c p > (           // Update peak if needed
+    c p!
+) ;
+
+// Check temperature thresholds
+:D
+c h 2? < (                    // Below minimum
+    `LOW TEMP` /N
+    /F s!
+) /E (
+    c h 0? > (               // Above maximum
+        `EMERGENCY STOP` /N
+        /F s!
+        H                    // Call emergency stop
+    ) /E (
+        c h 1? > (           // Above warning
+            `WARNING` /N
+            /T s!            // Still safe but warned
+        ) /E (
+            `OK` /N          // Normal range
+            /T s!
+        )
+    )
+) ;
+
+// Display current status
+:E
+`TEMP:` c , /N              // Current temp
+`PEAK:` p , /N              // Peak temp
+`STAT:` s . /N ;            // System status
+
+// Plot temperature trend using ASCII
+:F
+20(                         // Show last 20 readings
+    t /i ? h 1? * 100 / n!  // Scale to 0-100%
+    10(                     // 10 char height
+        10 /j - n > (
+            `*`
+        ) /E (
+            ` `
+        )
+    )
+    /N                      // New line per reading
+) ;
+
+// Emergency shutdown routine
+:H
+0 #32 /O                    // Disable system
+`SHUTDOWN` /N
+/F s! ;                     // Set status to false
+
+// Main monitoring loop
+:M
+B                          // Initialize
+/T r!                      // Run flag
+/U (                       // Continuous loop
+    r /T = /W              // While running
+    C                      // Read temperature
+    D                      // Check thresholds
+    E                      // Display status
+    20 /i = (              // Every 20 readings
+        F                  // Show plot
+        0 /i!              // Reset counter
+    )
+    s /F = (               // Check for shutdown
+        /F r!              // Stop running
+    )
+    500()                  // Delay between readings
+) ;
+
+// Interrupt handler
+:Z
+H ;                        // Emergency stop on interrupt
+
+```
+
+Key features of this implementation:
+
+1. **ADC Configuration**
+- Port #30: ADC control register
+- Port #31: ADC data input
+- Averaging for noise reduction
+- Conversion factor for raw ADC to temperature
+
+2. **Safety Features**
+- Maximum temperature emergency shutdown
+- Warning threshold alerts
+- Minimum valid temperature check
+- Emergency interrupt handler
+- Automatic system shutdown
+
+3. **Data Management**
+- Circular buffer for temperature history
+- Peak temperature tracking
+- Moving average filtering
+- Scaled plotting capability
+
+4. **Visualization**
+- ASCII-based temperature plotting
+- Real-time status display
+- Warning and error messages
+- System status indicators
+
+To use the system:
+
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start monitoring
+H    // Emergency stop
+F    // Show temperature plot
+```
+
+The system provides:
+
+1. **Temperature Monitoring**
+- Continuous ADC sampling
+- Noise filtering through averaging
+- Conversion to actual temperature
+- Historical data storage
+
+2. **Safety Controls**
+- Three threshold levels:
+  - Emergency shutdown (400°C)
+  - Warning level (300°C)
+  - Minimum valid (100°C)
+- Automatic shutdown on overheat
+- Interrupt-driven emergency stop
+
+3. **Data Visualization**
+- Real-time temperature display
+- ASCII plot of temperature trends
+- System status indicators
+- Peak temperature tracking
+
+4. **Historical Data**
+- 20-point temperature history
+- Trend visualization
+- Peak tracking
+
+ 
