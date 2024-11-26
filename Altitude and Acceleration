@@ -1,0 +1,191 @@
+MINT program for altitude and acceleration measurement using SPI interface for the sensors, with flight detection and data logging.
+
+```mint
+// Constants in heap
+:A [
+    #0190          // Maximum samples
+    #0064          // Launch detect threshold (1g = 100)
+    #0032          // Landing detect threshold
+    #0003          // Minimum flight time
+    #000A          // SPI delay timing
+    #00FF          // Maximum altitude (255m)
+] h! ;
+
+// Initialize arrays and variables
+:B 
+[0 0 0 0 0        // Altitude array
+ 0 0 0 0 0] l!   
+[0 0 0 0 0        // Acceleration array
+ 0 0 0 0 0] a!    
+0 f!              // Flight flag
+0 p!              // Peak altitude
+0 m!              // Max acceleration
+0 t!              // Time counter
+`INIT` /N ;
+
+// SPI Communication
+:C 
+// CS low for BMP180
+0 #40 /O          
+h 4? ()           // SPI timing
+n #41 /O          // Send command
+h 4? ()           // SPI timing
+#41 /I            // Read response
+1 #40 /O ;        // CS high
+
+// Read altitude sensor
+:D
+#82 C             // Send read command
+n!                // Store altitude
+n l /i ?!         // Save to array
+n p > (           // Update peak if higher
+    n p!
+) ;
+
+// Read accelerometer
+:E
+#84 C             // Send read command
+n!                // Store acceleration
+n a /i ?!         // Save to array
+n m < (           // Update max if higher
+    n m!
+) ;
+
+// Detect flight state
+:F
+a 0? h 1? > (     // If acceleration > threshold
+    f /F = (      // And not already flying
+        `LAUNCH` /N
+        /T f!     // Set flight flag
+        0 t!      // Reset timer
+    )
+) /E (
+    a 0? h 2? < ( // If acceleration < landing threshold
+        t h 3? > ( // And minimum flight time passed
+            f /T = ( // And still flying
+                `LAND` /N
+                /F f!  // Clear flight flag
+            )
+        )
+    )
+) ;
+
+// Display real-time data
+:G
+`ALT:` n , 
+`ACC:` a 0? , 
+`TIME:` t . /N ;
+
+// Show flight summary
+:H
+`FLIGHT DATA` /N
+`Peak Alt: ` p , `m` /N
+`Max Acc: ` m , `g` /N
+`Duration:` t . `s` /N
+10(              // Show last 10 readings
+    `T-` /i . 
+    `A:` l /i ? ,
+    `G:` a /i ? , /N
+) ;
+
+// Main flight monitoring
+:M
+B                // Initialize
+/T r!            // Run flag
+/U (             // Continuous loop
+    r /T = /W    // While running
+    D            // Read altitude
+    E            // Read acceleration
+    F            // Check flight state
+    f /T = (     // If in flight
+        t 1+ t!  // Increment timer
+        G        // Show data
+        /i 1+ /i!// Next array position
+        /i h 0? = ( // If arrays full
+            /F r! // Stop logging
+        )
+    )
+    100()        // Sample delay
+)
+H ;              // Show summary
+
+// Emergency stop
+:N
+/F r!            // Stop logging
+`STOP` /N ;
+
+// Interrupt handler
+:Z
+N ;              // Stop on interrupt
+
+
+```
+
+Key features of this implementation:
+
+1. **SPI Interface**
+- Port #40: Chip select control
+- Port #41: SPI data I/O
+- Configurable timing delays
+- Separate commands for each sensor
+
+2. **Flight Detection**
+- Acceleration-based launch detection
+- Landing detection with minimum flight time
+- Automatic data logging during flight
+- Array overflow protection
+
+3. **Data Management**
+- Separate arrays for altitude and acceleration
+- Peak value tracking
+- Flight duration timing
+- Post-flight summary
+
+4. **Safety Features**
+- Maximum altitude monitoring
+- Array overflow protection
+- Emergency interrupt handler
+- Automatic logging termination
+
+To use:
+
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start monitoring
+N    // Emergency stop
+H    // Show flight data
+```
+
+The system provides:
+
+1. **Flight Detection**
+- Acceleration threshold for launch
+- Minimum flight time check
+- Landing detection
+- Automatic logging control
+
+2. **Data Collection**
+- Altitude measurements
+- Acceleration readings
+- Time tracking
+- Peak value recording
+
+3. **Data Display**
+- Real-time telemetry
+- Post-flight summary
+- Last 10 readings review
+- Peak values display
+
+4. **Memory Management**
+- Array overflow protection
+- Flight-only logging
+- Configurable sample limit
+- Efficient data storage
+
+The heap constants can be adjusted for:
+- Sample buffer size
+- Launch/landing thresholds
+- Minimum flight time
+- SPI timing
+- Maximum altitude
