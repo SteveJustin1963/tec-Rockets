@@ -1,0 +1,160 @@
+MINT program for thrust measurement that handles sensor reading, data logging, and real-time display.
+
+```mint
+// Constants stored in heap to save variables
+:A [
+    #0800          // Minimum valid sensor reading
+    #F000          // Maximum valid sensor reading
+    #0064          // Test duration (100 cycles)
+    #0005          // Sample averaging count
+    #03E8          // Force scaling factor
+] h! ;
+
+// Initialize data storage arrays and variables
+:B 
+[0 0 0 0 0] r!    // Raw ADC readings array
+[0 0 0 0 0] f!    // Scaled force readings
+0 t!              // Test running flag
+0 p!              // Peak force
+0 m!              // Current measurement
+`INIT` /N ;
+
+// Read ADC with averaging
+:C
+0 s!              // Sum for averaging
+h 3? (            // Average n samples
+    #80 #30 /O    // Select ADC channel
+    100()         // ADC settling time
+    #31 /I        // Read ADC value
+    s + s!        // Add to sum
+    10()          // Short delay between samples
+)
+s h 3? / m!       // Calculate average
+m r /i ?!         // Store in raw array
+m p > (           // Update peak if higher
+    m p!
+) ;
+
+// Scale raw ADC to force units
+:D
+m h 4? * n!       // Scale by factor
+#FFFF n < (       // Check overflow
+    `RANGE` /N    // Show error
+    0 n!          // Reset value
+)
+n f /i ?! ;       // Store in force array
+
+// Display current readings
+:E
+`RAW:` m , /N     // Show raw ADC
+`N  :` n , /N     // Show scaled force
+`PEAK:` p , /N ;  // Show peak
+
+// Validity check
+:F
+m h 0? > (        // Check minimum
+    m h 1? < (    // Check maximum
+        /T        // Valid reading
+    ) /E ( /F )   // Invalid - too high
+) /E ( /F )       // Invalid - too low
+v! ;              // Store validity
+
+// Main test sequence
+:G
+B                 // Initialize
+/T t!             // Set test running
+`TEST START` /N
+h 2? (            // Run for set duration
+    C             // Read sensor
+    F             // Check validity
+    v /T = (      // If reading valid
+        D         // Scale to force
+        E         // Display values
+    ) /E (
+        `ERROR` /N
+    )
+    t /F = (      // Check for stop
+        `ABORT` /N
+        /E       // Exit loop
+    )
+    50()         // Delay between readings
+)
+`TEST DONE` /N ;
+
+// Emergency stop
+:H
+/F t!            // Clear test flag
+`E-STOP` /N ;
+
+// Print results
+:I
+`RESULTS` /N
+5(               // Show last 5 readings
+    `F` /i . `:` 
+    f /i ? , /N
+) ;
+
+// Interrupt handler
+:Z
+H ;              // Stop on interrupt
+
+
+```
+
+This implementation includes:
+
+1. **ADC Configuration**
+- Port #30: ADC control
+- Port #31: ADC data input
+- Configurable averaging to reduce noise
+
+2. **Data Management**
+- Raw ADC readings array
+- Scaled force readings array
+- Peak force tracking
+- Validity checking of readings
+
+3. **Safety Features**
+- Range checking on ADC input
+- Overflow detection in scaling
+- Emergency stop via interrupt
+- Input validation
+
+4. **Display Features**
+- Real-time raw ADC values
+- Scaled force readings
+- Peak force tracking
+- Final results summary
+
+To use:
+
+```mint
+A    // Load constants
+B    // Initialize
+G    // Run test
+H    // Emergency stop
+I    // Show results
+```
+
+Running a test:
+1. System initializes arrays and variables
+2. Begins sampling ADC at regular intervals
+3. Validates each reading
+4. Scales valid readings to force units
+5. Displays real-time values
+6. Stores data in arrays
+7. Shows final results
+
+Key features:
+1. Configurable sample averaging for noise reduction
+2. Automatic peak detection
+3. Data validation
+4. Real-time display
+5. Final results summary
+6. Emergency stop capability
+
+The constants in heap array can be adjusted for:
+- ADC validity range
+- Test duration
+- Number of samples for averaging
+- Force scaling factor
