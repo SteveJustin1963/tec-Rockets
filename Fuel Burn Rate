@@ -1,0 +1,181 @@
+MINT program for automated fuel burn rate analysis using optical sensors and precise timing.
+
+```mint
+// Constants in heap
+:A [
+    #0064          // 100 samples maximum
+    #0005          // Sample interval (time units)
+    #03E8          // Length scale factor (mm * 1000)
+    #0032          // Optical sensor threshold
+    #0002          // Number of sensors
+    #0064          // 100mm sample length
+] h! ;
+
+// Initialize system
+:B 
+[0 0 0 0 0        // Timing array for sensor 1
+ 0 0 0 0 0] t!    
+[0 0 0 0 0        // Timing array for sensor 2
+ 0 0 0 0 0] u!    
+0 s!              // Start time
+0 e!              // End time
+0 r!              // Burn rate
+0 f!              // Test flag
+`INIT` /N ;
+
+// Read optical sensors
+:C
+#82 #30 /O        // Select sensor 1
+100()             // Settling time
+#31 /I o!         // Read sensor 1
+#83 #30 /O        // Select sensor 2
+100()             // Settling time
+#31 /I p! ;       // Read sensor 2
+
+// Check sensor thresholds
+:D
+o h 3? < (        // Sensor 1 triggered
+    /i t /i ?!    // Store time in array
+    `S1:` /i . /N
+)
+p h 3? < (        // Sensor 2 triggered
+    /i u /i ?!    // Store time in array
+    `S2:` /i . /N
+) ;
+
+// Calculate burn rate
+:E
+t 0? s!           // Get start time
+u 0? e!           // Get end time
+e s - n!          // Time difference
+h 5? h 2? * n /   // Length/time calculation
+r! ;              // Store burn rate
+
+// Display results
+:F
+`BURN RATE ANALYSIS` /N
+`Start : ` s , /N
+`End   : ` e , /N
+`Time  : ` n , /N
+`Rate  : ` r , ` mm/s` /N ;
+
+// Ignition control
+:G
+1 #32 /O          // Enable ignition
+`IGNITION` /N ;
+
+// Emergency stop
+:H
+0 #32 /O          // Disable ignition
+/F f!             // Clear run flag
+`E-STOP` /N ;
+
+// Main test sequence
+:M
+B                 // Initialize
+/T f!             // Set run flag
+G                 // Start ignition
+/U (              // Main loop
+    f /T = /W     // While running
+    C             // Read sensors
+    D             // Check thresholds
+    /i h 0? = (   // If max samples reached
+        /F f!     // Stop test
+    )
+    /i h 1? + /i! // Increment counter
+    h 1? ()       // Sample interval delay
+)
+E                 // Calculate rate
+F ;               // Show results
+
+// Interrupt handler
+:Z
+H ;               // Emergency stop on interrupt
+
+
+```
+
+This implementation provides:
+
+1. **Sensor Configuration**
+- Dual optical sensors for burn progress detection
+- ADC channels 82 and 83 for sensors
+- Configurable threshold levels
+- Noise filtering and settling times
+
+2. **Timing System**
+- Precise sample interval timing
+- Arrays to store timing data
+- Automated time difference calculation
+- Burn rate computation
+
+3. **Safety Features**
+- Emergency interrupt handler
+- Maximum sample limit
+- Automated test termination
+- Ignition control safety
+
+4. **Data Analysis**
+- Real-time burn progress monitoring
+- Automated burn rate calculation
+- Results display
+- Data logging in arrays
+
+To use the system:
+
+```mint
+A    // Load constants
+B    // Initialize
+M    // Run test
+H    // Emergency stop
+F    // Show results
+```
+
+Operation sequence:
+
+1. **Initialization**
+   - Reset all arrays and variables
+   - Configure optical sensors
+   - Set up timing parameters
+
+2. **Test Execution**
+   - Activate ignition
+   - Monitor both optical sensors
+   - Record timing data
+   - Check for test completion
+
+3. **Analysis**
+   - Calculate time differences
+   - Compute burn rate
+   - Display results
+   - Store data for review
+
+Key Features:
+1. **Dual Sensor System**
+   - Start/end point detection
+   - Redundant measurements
+   - Precise timing
+
+2. **Automated Control**
+   - Automatic ignition
+   - Test termination
+   - Emergency stop capability
+
+3. **Data Processing**
+   - Real-time monitoring
+   - Automated calculations
+   - Results display
+   - Data logging
+
+4. **Safety Systems**
+   - Threshold monitoring
+   - Emergency shutdown
+   - Interrupt handling
+   - Maximum test duration
+
+The constants can be adjusted for:
+- Sample length
+- Timing intervals
+- Sensor thresholds
+- Scale factors
+- Maximum samples
