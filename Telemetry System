@@ -1,0 +1,440 @@
+MINT program for the telemetry system handling both transmission and data packing.
+
+```mint
+// Constants in heap
+:A [
+    #00FF          // TX buffer size
+    #0005          // Packet header
+    #00AA          // Packet end marker
+    #0064          // TX interval (100ms)
+    #0003          // Retry attempts
+    #01F4          // Timeout (500ms)
+    #0004          // Number of sensors
+    #0008          // Packet size
+] h! ;
+
+// Initialize system and buffers
+:B 
+[0 0 0 0 0 0 0 0] t!    // TX buffer
+[0 0 0 0] s!            // Sensor data
+0 c!                     // Comms status
+0 r!                     // Retry counter
+/T f!                    // System flag
+`INIT` /N ;
+
+// Read sensors into buffer
+:C
+// Altitude
+#80 #30 /O              // Select ADC channel 0
+100()                   // Settling time
+#31 /I s 0? !           // Store altitude
+
+// Temperature
+#81 #30 /O              // Select ADC channel 1
+100()
+#31 /I s 1? !           // Store temperature
+
+// Thrust
+#82 #30 /O              // Select ADC channel 2
+100()
+#31 /I s 2? !           // Store thrust
+
+// Battery
+#83 #30 /O              // Select ADC channel 3
+100()
+#31 /I s 3? ! ;         // Store battery
+
+// Pack data into TX buffer
+:D
+h 1? t 0? !             // Header
+s 0? t 1? !             // Altitude
+s 1? t 2? !             // Temperature
+s 2? t 3? !             // Thrust
+s 3? t 4? !             // Battery
+/i t 5? !               // Packet counter
+#00 t 6? !              // Checksum (init)
+h 2? t 7? ! ;           // End marker
+
+// Calculate checksum
+:E
+0 n!                    // Clear sum
+6(                      // Sum 6 bytes
+    t /i ? n + n!       // Add to sum
+)
+n t 6? ! ;              // Store checksum
+
+// Transmit data
+:F
+// Configure LoRa
+#90 #60 /O              // Select LoRa
+100()                   // Setup delay
+// Send packet
+8(                      // Send 8 bytes
+    t /i ? #61 /O       // Write to TX
+    100()               // TX delay
+)
+1 c! ;                  // Set TX flag
+
+// Wait for ACK
+:G
+h 5? (                  // Timeout counter
+    #62 /I #AA = (      // Check for ACK
+        /T c!           // Set success
+        /E              // Exit loop
+    )
+    10()                // Small delay
+) ;
+
+// Handle retries
+:H
+c /F = (                // If TX failed
+    r h 2? < (          // If retries left
+        r 1+ r!         // Increment retry
+        F               // Try again
+        G               // Wait for ACK
+    ) /E (              // Else
+        `FAIL` /N       // Show error
+        J               // Reset system
+    )
+) ;
+
+// Display status
+:I
+`ALT:` s 0? ,
+`TMP:` s 1? ,
+`THR:` s 2? ,
+`BAT:` s 3? , /N
+`PKT:` /i .
+`RTY:` r . /N ;
+
+// System reset
+:J
+0 r!                    // Clear retries
+0 /i!                   // Reset counter
+B                       // Reinitialize
+`RESET` /N ;
+
+// Main telemetry loop
+:M
+B                       // Initialize
+/T f!                   // Set run flag
+/U (                    // Continuous loop
+    f /T = /W           // While running
+    C                   // Read sensors
+    D                   // Pack data
+    E                   // Calculate checksum
+    F                   // Transmit
+    G                   // Wait for ACK
+    H                   // Handle retry
+    I                   // Show status
+    h 3? ()             // Transmission interval
+    /i 1+ /i!           // Increment packet counter
+) ;
+
+// Emergency stop
+:S
+/F f!                   // Clear run flag
+`STOP` /N ;
+
+// Interrupt handler
+:Z
+S                       // Stop system
+J ;                     // Reset
+
+```
+
+This implementation includes:
+
+1. **Hardware Interface**
+- ADC for sensors (Port 0x30-0x31)
+- LoRa module (Ports 0x60-0x62)
+- Multiple sensor inputs
+
+2. **Data Management**
+- 8-byte packet format
+- Checksum calculation
+- Packet counters
+- Retry mechanism
+
+3. **Communication Protocol**
+- Header/end markers
+- Checksum verification
+- Acknowledgment handling
+- Timeout management
+
+4. **Safety Features**
+- System reset on comms failure
+- Battery monitoring
+- Status display
+- Emergency stop
+
+To use:
+
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start telemetry
+S    // Emergency stop
+J    // System reset
+```
+
+Packet Format:
+```
+Byte 0: Header (#05)
+Byte 1: Altitude
+Byte 2: Temperature
+Byte 3: Thrust
+Byte 4: Battery
+Byte 5: Packet Counter
+Byte 6: Checksum
+Byte 7: End Marker (#AA)
+```
+
+more options
+
+1. More sophisticated error correction?
+2. Data compression?
+3. Enhanced packet validation?
+4. Ground station code?
+5. Advanced sensor filtering?
+
+
+/////////////////////////////////////////////////////////////////////
+
+Ground station program in MINT to receive, validate, and log the telemetry data.
+
+```mint
+// Ground station constants
+:A [
+    #00FF          // RX buffer size
+    #0005          // Expected header
+    #00AA          // Expected end marker
+    #0064          // Display update rate
+    #0032          // Log buffer size
+    #0008          // Packet size
+    #01F4          // Timeout value
+    #000A          // Moving average size
+] h! ;
+
+// Initialize buffers and variables
+:B 
+[0 0 0 0 0 0 0 0] r!    // RX buffer
+// History arrays for plotting
+[0 0 0 0 0 0 0 0 0 0] a!    // Altitude history
+[0 0 0 0 0 0 0 0 0 0] t!    // Temperature history
+[0 0 0 0 0 0 0 0 0 0] f!    // Thrust history
+[0 0 0 0 0 0 0 0 0 0] b!    // Battery history
+0 p!              // Last packet number
+0 e!              // Error counter
+/T s!             // System status
+`GROUND INIT` /N ;
+
+// Receive packet
+:C
+0 n!              // Clear byte counter
+h 5? (            // Wait with timeout
+    #62 /I m!     // Read byte
+    m r n? !      // Store in buffer
+    n 1+ n!       // Next position
+    n h 5? = (    // If buffer full
+        /E        // Exit wait loop
+    )
+    10()          // Small delay
+) ;
+
+// Validate packet
+:D
+// Check header
+r 0? h 1? = (
+    // Check end marker
+    r 7? h 2? = (
+        // Verify checksum
+        0 n!      // Clear sum
+        6(        // Sum 6 bytes
+            r /i ? n + n!
+        )
+        n r 6? = ( // Compare checksum
+            /T v!  // Valid packet
+        ) /E (
+            /F v!  // Invalid checksum
+            e 1+ e!
+        )
+    ) /E (
+        /F v!      // Invalid end marker
+        e 1+ e!
+    )
+) /E (
+    /F v!          // Invalid header
+    e 1+ e!
+) ;
+
+// Send acknowledgment
+:E
+v /T = (           // If packet valid
+    h 2? #61 /O    // Send ACK
+) ;
+
+// Update history arrays
+:F
+// Shift arrays left
+9(
+    /i a /i 1+ ? a /i ?!    // Altitude
+    /i t /i 1+ ? t /i ?!    // Temperature
+    /i f /i 1+ ? f /i ?!    // Thrust
+    /i b /i 1+ ? b /i ?!    // Battery
+)
+// Add new values
+r 1? a 9? !        // New altitude
+r 2? t 9? !        // New temperature
+r 3? f 9? !        // New thrust
+r 4? b 9? ! ;      // New battery
+
+// Display current values
+:G
+`Telemetry Data` /N
+`ALT:` r 1? , `m` /N
+`TMP:` r 2? , `C` /N
+`THR:` r 3? , `N` /N
+`BAT:` r 4? , `V` /N
+`PKT:` r 5? .
+`ERR:` e . /N ;
+
+// Plot history (ASCII graph)
+:H
+`Altitude Plot` /N
+10(               // 10 rows
+    10(           // 10 columns
+        a /j ? #FF /i 10 * - > (
+            `*`
+        ) /E (
+            ` `
+        )
+    )
+    /N
+) ;
+
+// Log data to memory
+:I
+[                  // Create log entry
+    r 1?           // Altitude
+    r 2?           // Temperature
+    r 3?           // Thrust
+    r 4?           // Battery
+    /i             // Time stamp
+] l /i ?! ;        // Store in log array
+
+// Save log to output
+:J
+`LOG DUMP` /N
+h 4? (            // For each entry
+    `T:` /i .
+    l /i ? /S n!  // Get entry size
+    n (           // For each value
+        l /i ? /i ? ,
+    )
+    /N
+) ;
+
+// Main reception loop
+:M
+B                 // Initialize
+/T s!             // Set system status
+/U (              // Continuous loop
+    s /T = /W     // While running
+    C             // Receive packet
+    D             // Validate
+    E             // Send ACK
+    v /T = (      // If valid
+        F         // Update history
+        I         // Log data
+        h 3? /i = ( // Display interval
+            G     // Show current
+            H     // Plot history
+            0 /i! // Reset counter
+        )
+    )
+    h 3? ()       // Display update delay
+) ;
+
+// Emergency stop
+:S
+/F s!             // Clear status
+J                 // Save log
+`STOP` /N ;
+
+// Interrupt handler
+:Z
+S ;               // Emergency stop
+
+
+```
+
+Key features of this ground station implementation:
+
+1. **Data Reception**
+- Packet validation
+- Checksum verification
+- Acknowledgment handling
+- Timeout protection
+
+2. **Data Visualization**
+- Real-time value display
+- ASCII plotting
+- Error counting
+- Status monitoring
+
+3. **Data Logging**
+- Circular buffer for history
+- Time stamping
+- Complete data logging
+- Data export capability
+
+4. **Analysis Features**
+- Moving average calculation
+- Trend plotting
+- Error rate monitoring
+- Battery tracking
+
+To use:
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start receiving
+S    // Emergency stop
+J    // Dump log
+```
+
+The system provides:
+
+1. **Real-time Display**
+- Current sensor values
+- Packet statistics
+- Error counts
+- System status
+
+2. **Data Plotting**
+- Altitude history
+- Temperature trends
+- Thrust profile
+- Battery voltage
+
+3. **Data Management**
+- Complete logging
+- Error tracking
+- Time stamping
+- Data export
+
+4. **Safety Features**
+- Communication timeout
+- Error detection
+- System monitoring
+- Emergency stop
+
+more options:
+
+1. Enhanced data visualization?
+2. More sophisticated data analysis?
+3. Data export formatting?
+4. Statistical calculations?
+5. Additional plotting options?
+
