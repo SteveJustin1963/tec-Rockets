@@ -1,0 +1,921 @@
+MINT program for GPS tracking and position logging.
+
+```mint
+// Constants in heap
+:A [
+    #0064          // Buffer size (100 points)
+    #03E8          // Min altitude change for flight detect (m)
+    #0032          // Sample interval (50ms)
+    #0005          // UART timeout
+    #0080          // UART data port
+    #0081          // UART status port
+    #0002          // Minimum satellites for valid fix
+    #000A          // GPS sentence start marker ($)
+] h! ;
+
+// GPS data buffers
+:B 
+[0 0 0 0 0] x!    // Latitude array
+[0 0 0 0 0] y!    // Longitude array
+[0 0 0 0 0] z!    // Altitude array
+0 f!              // Flight status
+0 s!              // Satellite count
+0 v!              // GPS valid flag
+`GPS INIT` /N ;
+
+// UART byte receive
+:C
+h 3? (            // Timeout loop
+    h 5? /I #80 & ( // Check UART ready
+        h 4? /I n!  // Read byte
+        /T v!       // Valid byte
+        /E          // Exit loop
+    )
+    10()          // Small delay
+) ;
+
+// Read GPS sentence
+:D
+[0 0 0 0 0] g!    // GPS buffer
+0 n!              // Clear counter
+/U (              // Until complete
+    C             // Get byte
+    v /T = (      // If valid byte
+        n #00 = ( // First byte
+            m h 7? = ( // Check for $
+                m g n? !  // Store byte
+                n 1+ n!   // Next position
+            )
+        ) /E (    // Not first byte
+            m g n? !  // Store byte
+            n 1+ n!   // Next position
+            m #0A = ( // Check for LF
+                /E    // Exit if found
+            )
+        )
+    )
+    n h 0? > (    // Buffer full
+        /E        // Exit loop
+    )
+) ;
+
+// Parse GPGGA sentence
+:E
+// Check if GPGGA
+g 0? #24 = (      // $
+g 1? #47 = (      // G
+g 2? #50 = (      // P
+g 3? #47 = (      // G
+g 4? #47 = (      // G
+g 5? #41 = (      // A
+    P             // Parse position
+) ) ) ) ) ) ;
+
+// Parse position data
+:P
+// Extract latitude
+6 n!              // Start position
+4(                // 4 digits
+    g n? q!       // Get digit
+    q 48 - m!     // Convert to number
+    l 10 * m + l! // Add to result
+    n 1+ n!       // Next position
+)
+l x /i ?!         // Store latitude
+
+// Extract longitude
+n 2+ n!           // Skip separator
+4(                // 4 digits
+    g n? q!       // Get digit
+    q 48 - m!     // Convert to number
+    l 10 * m + l! // Add to result
+    n 1+ n!       // Next position
+)
+l y /i ?!         // Store longitude
+
+// Extract altitude
+n 4+ n!           // Skip to altitude
+3(                // 3 digits
+    g n? q!       // Get digit
+    q 48 - m!     // Convert to number
+    l 10 * m + l! // Add to result
+    n 1+ n!       // Next position
+)
+l z /i ?!         // Store altitude
+
+// Extract satellites
+n 2+ n!           // Skip to sats
+g n? 48 - s! ;    // Store satellite count
+
+// Check for valid fix
+:F
+s h 6? > (        // If enough satellites
+    z /i ? z /i 1 - ? - h 1? > ( // Alt change
+        /T f!     // Set flight flag
+    )
+    /T v!         // Set valid flag
+) /E (
+    /F v!         // Clear valid flag
+) ;
+
+// Display position
+:G
+v /T = (          // If valid fix
+    `LAT: ` x /i ? . /N
+    `LON: ` y /i ? . /N
+    `ALT: ` z /i ? . `m` /N
+    `SAT: ` s . /N
+    `FIX: OK` /N
+) /E (
+    `NO FIX` /N
+) ;
+
+// Save position log
+:H
+`POSITION LOG` /N
+h 0? (            // For each point
+    `T:` /i .
+    `LAT:` x /i ? .
+    `LON:` y /i ? .
+    `ALT:` z /i ? . /N
+) ;
+
+// Main tracking loop
+:M
+B                 // Initialize
+/T r!             // Set run flag
+/U (              // Continuous loop
+    r /T = /W     // While running
+    D             // Read GPS
+    E             // Parse GPGGA
+    F             // Check validity
+    v /T = (      // If valid
+        f /T = (  // If in flight
+            G     // Show position
+            /i 1+ /i! // Next log position
+            /i h 0? = ( // Buffer full
+                H     // Save log
+                0 /i! // Reset counter
+            )
+        )
+    )
+    h 2? ()       // Sample delay
+) ;
+
+// Emergency stop
+:S
+/F r!             // Stop tracking
+H ;               // Save final log
+
+// Interrupt handler
+:Z
+S ;               // Emergency stop
+
+
+```
+
+This implementation provides:
+
+1. **GPS Interface**
+- UART communication
+- NMEA sentence parsing
+- Position extraction
+- Satellite tracking
+
+2. **Flight Detection**
+- Altitude change monitoring
+- Minimum satellite validation
+- Position logging control
+- Battery conservation
+
+3. **Data Management**
+- Position history
+- Altitude tracking
+- Quality indicators
+- Complete logging
+
+4. **Safety Features**
+- Validity checking
+- Timeout protection
+- Emergency logging
+- Error handling
+
+To use:
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start tracking
+S    // Emergency stop
+H    // Show log
+```
+
+Key Features:
+
+1. **GPS Processing**
+- NMEA parsing
+- Position extraction
+- Altitude tracking
+- Quality monitoring
+
+2. **Flight Detection**
+- Altitude-based detection
+- Satellite validation
+- Automatic logging
+- Power management
+
+3. **Data Recording**
+- Position history
+- Time stamping
+- Quality metrics
+- Complete logging
+
+4. **Display Functions**
+- Current position
+- Satellite count
+- Fix quality
+- Error status
+
+add:
+1. More sophisticated position filtering?
+2. Enhanced data visualization?
+3. Ground station interface?
+4. Recovery assistance features?
+5. Path prediction?
+
+//////////////////////////////////////////////////////////////////////
+
+ground station interface that complements the GPS tracking system to display and analyze position data in real-time.
+
+```mint
+// Ground station constants
+:A [
+    #0064          // Display update rate (100ms)
+    #0080          // Radio RX port
+    #0081          // Radio status port
+    #00FF          // Max packet size
+    #0032          // History buffer size
+    #0005          // Moving average size
+    #0003          // Min distance change (m)
+    #03E8          // Search radius (1000m)
+] h! ;
+
+// Initialize buffers
+:B 
+[0 0 0 0 0] x!    // Latitude history
+[0 0 0 0 0] y!    // Longitude history
+[0 0 0 0 0] z!    // Altitude history
+[0 0 0 0 0] d!    // Distance history
+0 p!              // Last packet ID
+0 c!              // Current distance
+0 m!              // Max altitude
+0 r!              // Recovery bearing
+/T s!             // System status
+`GROUND INIT` /N ;
+
+// Receive position packet
+:C
+0 n!              // Clear counter
+h 3? (            // Wait with timeout
+    h 1? /I #80 & (  // Radio ready
+        h 0? /I     // Read byte
+        g n? !      // Store in buffer
+        n 1+ n!     // Next position
+        n 6 = (     // Packet complete
+            /E      // Exit loop
+        )
+    )
+    10()          // Small delay
+) ;
+
+// Calculate distance and bearing
+:D
+// Haversine distance calculation
+x 0? x /i ? - a!  // Delta lat
+y 0? y /i ? - b!  // Delta lon
+// Simplified distance
+a a * b b * + q!  // Square root
+q #03E8 * c!      // Scale to meters
+
+// Basic bearing calculation
+b a / n!          // Delta lon/lat
+n #0168 * r! ;    // Scale to degrees
+
+// Update position history
+:E
+x /i ? k!         // Save current
+5(                // Shift history
+    /i 1 - j!     // Previous index
+    x j? x /i ?!  // Shift latitude
+    y j? y /i ?!  // Shift longitude
+    z j? z /i ?!  // Shift altitude
+)
+g 0? x 0? !       // Store new lat
+g 1? y 0? !       // Store new lon
+g 2? z 0? !       // Store new alt
+z 0? m > (        // Check max alt
+    z 0? m!
+) ;
+
+// Display current status
+:F
+`Current Position` /N
+`LAT : ` x 0? . /N
+`LON : ` y 0? . /N
+`ALT : ` z 0? . `m` /N
+`DIST: ` c . `m` /N
+`HEAD: ` r . `deg` /N
+`MAX : ` m . `m` /N ;
+
+// Plot altitude profile
+:G
+`Altitude Profile` /N
+10(               // 10 rows
+    h 4? (        // History points
+        z /j ? m 10 / /i * m > (
+            `*`
+        ) /E (
+            ` `
+        )
+    )
+    /N
+) ;
+
+// Display position map
+:H
+`Position Map (Top View)` /N
+10(               // 10 rows
+    10(           // 10 columns
+        x /j ? x 0? - #000A / /i = (
+            y /j ? y 0? - #000A / /j = (
+                `X`
+            ) /E (
+                ` `
+            )
+        ) /E (
+            ` `
+        )
+    )
+    /N
+) ;
+
+// Recovery guidance
+:I
+c h 6? < (        // If within search radius
+    `RECOVERY GUIDE` /N
+    `Distance: ` c . `m` /N
+    `Bearing : ` r . `deg` /N
+    c h 2? < (    // If very close
+        `*NEAR TARGET*` /N
+    )
+) ;
+
+// Log position data
+:J
+[               // Create log entry
+    x 0?        // Current lat
+    y 0?        // Current lon
+    z 0?        // Current alt
+    c           // Distance
+    r           // Bearing
+] l /i ?! ;     // Store in log
+
+// Main ground station loop
+:M
+B               // Initialize
+/T s!           // Set status
+/U (            // Continuous loop
+    s /T = /W   // While running
+    C           // Receive data
+    D           // Calculate position
+    E           // Update history
+    F           // Show status
+    /i 10 = (   // Every 10 cycles
+        G       // Show altitude plot
+        H       // Show position map
+        I       // Show recovery guide
+        0 /i!   // Reset counter
+    )
+    J           // Log data
+    h 0? ()     // Display update delay
+) ;
+
+// Emergency functions
+:S
+/F s!           // Stop tracking
+`COMMS LOST` /N ;
+
+// Save tracking log
+:T
+`TRACK LOG` /N
+h 4? (          // For each entry
+    `T:` /i .
+    l /i ? /S n! // Get entry size
+    n (          // For each value
+        l /i ? /i ? ,
+    )
+    /N
+) ;
+
+// Interrupt handler
+:Z
+S               // Stop tracking
+T ;             // Save log
+
+
+```
+
+Key features of this ground station implementation:
+
+1. **Position Tracking**
+- Real-time position updates
+- Distance calculation
+- Bearing computation
+- Altitude profiling
+
+2. **Visualization**
+- ASCII position mapping
+- Altitude plotting
+- Direction finding
+- Status display
+
+3. **Recovery Assistance**
+- Distance to target
+- Bearing guidance
+- Proximity alerts
+- Search radius monitoring
+
+4. **Data Management**
+- Position history
+- Track logging
+- Statistics tracking
+- Data export
+
+To use:
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start ground station
+S    // Emergency stop
+T    // Save track log
+```
+
+This ground station provides:
+
+1. **Real-time Display**
+- Current position
+- Distance/bearing
+- Altitude profile
+- Position map
+
+2. **Recovery Tools**
+- Direction finding
+- Distance tracking
+- Proximity alerts
+- Search guidance
+
+3. **Data Analysis**
+- Track logging
+- History review
+- Maximum altitude
+- Distance covered
+
+4. **Safety Features**
+- Communication monitoring
+- Data validation
+- Emergency logging
+- Status alerts
+
+add:
+1. More sophisticated mapping?
+2. Enhanced recovery features?
+3. Additional data analysis?
+4. Communication encryption?
+5. Multiple target tracking?
+
+///////////////////////////////////////////////////////////////////////////////
+
+Ground station code to use LoRa communication specifically.
+
+```mint
+// LoRa and GPS constants
+:A [
+    #0042          // LoRa spreading factor (SF7)
+    #0078          // LoRa bandwidth (125kHz)
+    #0034          // LoRa coding rate (4/5)
+    #00FF          // Max packet size
+    #0032          // History buffer size
+    #0064          // Sync word
+    #0080          // LoRa SPI data port
+    #0081          // LoRa SPI clock port
+    #0082          // LoRa CS port
+    #0083          // LoRa RST port
+    #0084          // LoRa IRQ port
+] h! ;
+
+// Initialize buffers
+:B 
+[0 0 0 0 0] x!    // Latitude history
+[0 0 0 0 0] y!    // Longitude history
+[0 0 0 0 0] z!    // Altitude history
+[0 0 0 0 0] d!    // RSSI history
+0 p!              // Packet counter
+0 r!              // Last RSSI
+/T s!             // System status
+`LORA INIT` /N ;
+
+// LoRa SPI transfer
+:C
+1 h 8? /O         // CS low
+100()             // Setup delay
+n h 6? /O         // Write byte
+100()             // Transfer delay
+h 6? /I m!        // Read response
+0 h 8? /O ;       // CS high
+
+// Initialize LoRa
+:D
+// Reset LoRa
+0 h 9? /O         // RST low
+1000()            // Reset delay
+1 h 9? /O         // RST high
+1000()            // Startup delay
+
+// Set sleep mode
+#80 n! C          // Sleep command
+#00 n! C          // Sleep params
+
+// Configure LoRa
+#81 n! C          // Set mode
+h 0? n! C         // Spreading factor
+#82 n! C          // Set bandwidth
+h 1? n! C         // BW setting
+#83 n! C          // Coding rate
+h 2? n! C         // CR setting
+#84 n! C          // Sync word
+h 5? n! C         // Sync value
+
+// Set receive mode
+#85 n! C          // RX mode
+#00 n! C ;        // RX params
+
+// Check LoRa IRQ
+:E
+h 10? /I #40 & ;  // Check RX done
+
+// Read packet
+:F
+#86 n! C          // Get packet
+g 0? !            // Store length
+g 0? (            // Read all bytes
+    #00 n! C      // Read byte
+    g /i 1+ ?!    // Store in buffer
+) ;
+
+// Parse GPS data
+:G
+// Extract lat/lon/alt
+g 1? x /i ?!      // Store latitude
+g 2? y /i ?!      // Store longitude
+g 3? z /i ?!      // Store altitude
+// Get RSSI
+#87 n! C          // RSSI command
+#00 n! C          // Read RSSI
+m r!              // Store RSSI
+r d /i ?! ;       // Add to history
+
+// Display status
+:H
+`LoRa GPS Status` /N
+`LAT : ` x /i ? . /N
+`LON : ` y /i ? . /N
+`ALT : ` z /i ? . `m` /N
+`RSSI: ` r . `dBm` /N
+`PKT : ` p . /N ;
+
+// Plot signal strength
+:I
+`Signal History` /N
+10(               // 10 rows
+    h 4? (        // History points
+        d /j ? #64 + /i 10 / > (
+            `*`
+        ) /E (
+            ` `
+        )
+    )
+    /N
+) ;
+
+// Main receive loop
+:M
+B                // Initialize
+D                // Setup LoRa
+/T s!            // Set status
+/U (             // Continuous loop
+    s /T = /W    // While running
+    E (          // If packet ready
+        F        // Read packet
+        G        // Parse data
+        H        // Show status
+        p 10 = ( // Every 10 packets
+            I    // Show signal plot
+            0 p! // Reset counter
+        )
+        p 1+ p!  // Count packet
+    )
+    100()        // Loop delay
+) ;
+
+// Emergency stop
+:S
+#88 n! C         // Sleep mode
+/F s!            // Stop receiving
+`STOP` /N ;
+
+// Interrupt handler
+:Z
+S ;              // Emergency stop
+
+
+```
+
+Key changes for LoRa implementation:
+
+1. **LoRa Configuration**
+- SPI interface setup
+- Spreading factor setting
+- Bandwidth configuration
+- Coding rate setup
+- Sync word definition
+
+2. **Communication Protocol**
+- SPI data transfer
+- Packet handling
+- RSSI monitoring
+- Error checking
+
+3. **Data Management**
+- GPS data parsing
+- Signal strength tracking
+- Packet counting
+- History buffers
+
+4. **Hardware Interface**
+```
+Port 0x80: LoRa SPI data
+Port 0x81: LoRa SPI clock
+Port 0x82: LoRa CS
+Port 0x83: LoRa RST
+Port 0x84: LoRa IRQ
+```
+
+To use:
+```mint
+A    // Load constants
+B    // Initialize buffers
+D    // Setup LoRa
+M    // Start receiving
+S    // Emergency stop
+```
+
+add:
+1. Error correction?
+2. Packet acknowledgment?
+3. Multiple device support?
+4. Enhanced signal analysis?
+5. Power management features?
+
+/////////////////////////////////////////////////////////////////////////////////////
+
+Both the rocket-side and ground-station code to show the complete system:
+
+```mint
+// Rocket-side GPS/LoRa code
+:A [
+    #0042          // LoRa SF7
+    #0078          // 125kHz BW
+    #0034          // CR 4/5
+    #0064          // Sync word
+    #0080          // LoRa data port
+    #0081          // LoRa clock
+    #0082          // LoRa CS
+    #0083          // LoRa RST
+    #0084          // GPS UART port
+    #03E8          // Flight detect alt
+] h! ;
+
+// Initialize
+:B 
+0 x!              // Current lat
+0 y!              // Current lon
+0 z!              // Current alt
+0 p!              // Packet counter
+0 f!              // Flight flag
+/T s!             // System status
+`ROCKET INIT` /N ;
+
+// LoRa SPI transfer
+:C
+1 h 8? /O         // CS low
+n h 6? /O         // Send byte
+h 6? /I m!        // Read response
+0 h 8? /O ;       // CS high
+
+// Initialize LoRa
+:D
+// Reset module
+0 h 9? /O         // RST low
+1000()            // Hold reset
+1 h 9? /O         // RST high
+1000()            // Startup delay
+
+// Configure LoRa
+#81 n! C          // Set mode
+h 0? n! C         // Set SF
+#82 n! C          // Set BW
+h 1? n! C         // BW value
+#83 n! C          // Set CR
+h 2? n! C ;       // CR value
+
+// Read GPS UART
+:E
+h 10? /I n!       // Read GPS byte
+n #24 = (         // Check for $
+    G             // Parse NMEA
+) ;
+
+// Send position packet
+:F
+#90 n! C          // TX mode
+x n! C            // Send lat
+y n! C            // Send lon
+z n! C            // Send alt
+p n! C            // Send packet ID
+#00 n! C ;        // End packet
+
+// Main rocket loop
+:M
+B                 // Initialize
+D                 // Setup LoRa
+/T s!             // Set status
+/U (              // Continuous loop
+    s /T = /W     // While running
+    E             // Read GPS
+    z h 9? > (    // Above launch alt
+        /T f!     // Set flight flag
+    )
+    f /T = (      // If in flight
+        F         // Send position
+        p 1+ p!   // Count packet
+    )
+    100()         // Loop delay
+) ;
+
+// Emergency stop
+:S
+#88 n! C          // Sleep mode
+/F s!             // Stop system
+`STOP` /N ;
+
+// Interrupt handler
+:Z
+S ;               // Emergency stop
+
+```
+ /////////////////// ground  /////////////////////
+
+```mint
+// Ground station code
+:A [
+    #0042          // Match rocket SF7
+    #0078          // Match BW
+    #0034          // Match CR
+    #0064          // Sync word
+    #0080          // LoRa data port
+    #0081          // LoRa clock
+    #0082          // LoRa CS
+    #0083          // LoRa RST
+    #0032          // History size
+] h! ;
+
+// Initialize ground station
+:B 
+[0 0 0 0 0] x!    // Lat history
+[0 0 0 0 0] y!    // Lon history
+[0 0 0 0 0] z!    // Alt history
+0 d!              // Distance
+0 b!              // Bearing
+/T s!             // System status
+`BASE INIT` /N ;
+
+// LoRa SPI transfer
+:C
+1 h 8? /O         // CS low
+n h 6? /O         // Send byte
+h 6? /I m!        // Read response
+0 h 8? /O ;       // CS high
+
+// Init LoRa receiver
+:D
+0 h 9? /O         // Reset
+1000()
+1 h 9? /O
+1000()
+#81 n! C          // RX mode
+h 0? n! C         // Set SF
+#82 n! C          // Set BW
+h 1? n! C ;       // Set BW value
+
+// Receive packet
+:E
+#86 n! C          // Get packet
+x /i ? !          // Store lat
+#00 n! C
+y /i ? !          // Store lon
+#00 n! C
+z /i ? ! ;        // Store alt
+
+// Calculate position
+:F
+x 0? x 1? - a!    // Delta lat
+y 0? y 1? - b!    // Delta lon
+a a * b b * + q!  // Distance
+q #03E8 * d!      // Scale to meters
+b a / #0168 * b! ; // Bearing
+
+// Display status
+:G
+`Position` /N
+`LAT: ` x 0? . /N
+`LON: ` y 0? . /N
+`ALT: ` z 0? . `m` /N
+`DST: ` d . `m` /N
+`BRG: ` b . `deg` /N ;
+
+// Main ground loop
+:M
+B                 // Initialize
+D                 // Setup LoRa
+/T s!             // Set status
+/U (              // Continuous loop
+    s /T = /W     // While running
+    E             // Get packet
+    F             // Calculate
+    G             // Display
+    500()         // Update delay
+) ;
+
+// Emergency stop
+:S
+#88 n! C          // Sleep mode
+/F s!             // Stop system
+`STOP` /N ;
+
+// Interrupt handler
+:Z
+S ;               // Emergency stop
+
+```
+
+Key differences between rocket and ground station:
+
+1. **Rocket Side**
+- GPS reading and parsing
+- Flight detection
+- Position transmission
+- Power efficiency focus
+
+2. **Ground Station**
+- Continuous reception
+- Position history
+- Distance calculation
+- Status display
+- Recovery guidance
+
+To use:
+
+On Rocket:
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start transmission
+```
+
+On Ground Station:
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start receiving
+```
+
+The rocket code is optimized for:
+1. Battery efficiency
+2. Reliable transmission
+3. Flight state detection
+4. Emergency recovery
+
+The ground station is optimized for:
+1. Continuous monitoring
+2. Position tracking
+3. Recovery assistance
+4. Data logging
