@@ -1,0 +1,416 @@
+
+
+// IMU Constants in heap
+:A [
+    #0068          // MPU6050 I2C address
+    #001B          // GYRO_CONFIG register
+    #001C          // ACCEL_CONFIG register
+    #0008          // Full scale gyro (±500°/s)
+    #0008          // Full scale accel (±4g)
+    #0047          // First data register
+    #0006          // Number of data bytes
+    #0064          // Sample rate divider
+    #000A          // Digital low pass filter
+] h! ;
+
+// IMU registers in array
+:B [
+    #006B          // PWR_MGMT_1
+    #0019          // SMPLRT_DIV
+    #001A          // CONFIG
+    #001B          // GYRO_CONFIG
+    #001C          // ACCEL_CONFIG
+    #0075          // WHO_AM_I
+] r! ;
+
+// Initialize I2C
+:C
+#80 #40 /O        // I2C clock high
+#80 #41 /O        // I2C data high
+100() ;           // Setup delay
+
+// I2C Start condition
+:D
+#80 #41 /O        // Data high
+10()              // Delay
+#80 #40 /O        // Clock high
+10()              // Delay
+#00 #41 /O        // Data low
+10()              // Delay
+#00 #40 /O ;      // Clock low
+
+// I2C Stop condition
+:E
+#00 #41 /O        // Data low
+10()              // Delay
+#80 #40 /O        // Clock high
+10()              // Delay
+#80 #41 /O ;      // Data high
+
+// Write byte to I2C
+:F
+8(                // 8 bits
+    n #80 & (     // Check bit
+        #80 #41 /O
+    ) /E (
+        #00 #41 /O
+    )
+    10()          // Delay
+    #80 #40 /O    // Clock high
+    10()          // Delay
+    #00 #40 /O    // Clock low
+    n { n!        // Shift left
+)
+#00 #41 /O        // Ready for ACK
+#80 #40 /O        // Clock high
+10()              // Delay
+#41 /I a!         // Read ACK
+#00 #40 /O ;      // Clock low
+
+// Read byte from I2C
+:G
+0 d!              // Clear data
+8(                // 8 bits
+    #80 #40 /O    // Clock high
+    10()          // Delay
+    #41 /I        // Read bit
+    #80 & (       // If high
+        d { 1 + d!// Add to result
+    ) /E (
+        d { d!    // Just shift
+    )
+    #00 #40 /O    // Clock low
+    10()          // Delay
+)
+d ;               // Return byte
+
+// Initialize MPU6050
+:H
+D                 // Start I2C
+h 0? F            // Device address
+r 0? F            // PWR_MGMT_1 register
+#00 F             // Clear sleep bit
+E                 // Stop I2C
+100()             // Wait for wake
+
+// Set sample rate
+D
+h 0? F            // Device address
+r 1? F            // SMPLRT_DIV register
+h 7? F            // Set rate
+E
+
+// Configure gyro
+D
+h 0? F            // Device address
+r 3? F            // GYRO_CONFIG register
+h 3? F            // Set scale
+E
+
+// Configure accel
+D
+h 0? F            // Device address
+r 4? F            // ACCEL_CONFIG register
+h 4? F            // Set scale
+E ;
+
+// Read IMU Data
+:I
+[0 0 0 0 0 0] d!  // Data array
+D
+h 0? F            // Device address
+h 5? F            // Start register
+E
+D
+h 0? 1 + F        // Read address
+6(                // Read 6 bytes
+    G n!          // Get byte
+    n d /i ?!     // Store in array
+    /i 5 < (      // If not last byte
+        0 F       // Send ACK
+    ) /E (
+        1 F       // Send NACK
+    )
+)
+E ;
+
+// Convert raw data to actual values
+:J
+// Accel conversion
+d 0? 8 { d 1? + s!    // Combine bytes
+s #8000 & (           // Check sign
+    s #FFFF ^ 1 + -1 *// Convert negative
+) a!                  // Store in a
+// Similar for Y and Z...
+
+// Gyro conversion
+d 4? 8 { d 5? + s!    // Combine bytes
+s #8000 & (           // Check sign
+    s #FFFF ^ 1 + -1 *// Convert negative
+) g! ;               // Store in g
+
+// Main IMU read loop
+:M
+H                     // Initialize IMU
+/T r!                 // Run flag
+/U (                  // Continuous loop
+    r /T = /W         // While running
+    I                 // Read raw data
+    J                 // Convert data
+    `A:` a . 
+    `G:` g . /N      // Display values
+    h 7? ()          // Sample delay
+) ;
+
+// Emergency stop
+:S
+/F r!
+`IMU STOP` /N ;
+
+// Interrupt handler
+:Z
+S ;
+
+
+A    // Load constants
+H    // Initialize IMU
+M    // Start reading
+S    // Emergency stop
+
+
+///////////////////////////////////////////////////////////////////////////
+
+# How To: Implementing a Servo-Controlled Fin Stabilization System
+
+## Required Hardware
+* Z80 SBC board aka TEC-1
+* MPU6050 IMU sensor
+* 3-4 servo motors (recommend MG90S or similar)
+* Rocket fins with servo mounting points
+* Power supply (5V for servos, 3.3V for IMU)
+* Connecting wires
+* Breadboard for prototyping
+
+## Initial Setup
+
+### Step 1: Hardware Assembly
+
+1. Connect MPU6050 to Z80:
+   ```
+   MPU6050    Z80 SBC
+   VCC    ->  3.3V
+   GND    ->  GND
+   SCL    ->  Port 0x40
+   SDA    ->  Port 0x41
+   ```
+
+2. Connect Servos:
+   ```
+   Servo 1  ->  Port 0x50
+   Servo 2  ->  Port 0x51
+   Servo 3  ->  Port 0x52
+   VCC     ->  5V
+   GND     ->  GND
+   ```
+
+### Step 2: Software Installation
+
+1. Enter the initialization code into MINT:
+   ```mint
+   // Load these constants first
+   :A [
+       #0064          // Kp = 1.00
+       #0032          // Ki = 0.50
+       #0019          // Kd = 0.25
+       #0064          // Center = 100
+       #001E          // Max ±30°
+   ] h! ;
+   ```
+
+2. Initialize IMU with this sequence:
+   ```mint
+   :H
+   // Wake up IMU
+   D                 
+   h 0? F            
+   r 0? F            
+   #00 F             
+   E                 
+   100()             
+
+   // Set sample rate
+   D
+   h 0? F            
+   r 1? F            
+   h 7? F            
+   E ;
+   ```
+
+## Calibration Process
+
+### Step 1: IMU Calibration
+1. Place rocket on level surface
+2. Run calibration sequence:
+   ```mint
+   :C
+   100(             // Take 100 samples
+       I            // Read IMU
+       J            // Convert values
+       d n + n!     // Add to sum
+   )
+   n 100 / o! ;    // Store offset
+   ```
+
+### Step 2: Servo Center Calibration
+1. For each servo:
+   ```mint
+   #64 #50 /O      // Center servo 1
+   #64 #51 /O      // Center servo 2
+   #64 #52 /O      // Center servo 3
+   ```
+
+2. Physically attach fins at neutral position
+
+## Control System Implementation
+
+### Step 1: Basic PID Loop
+1. Enter this main control code:
+   ```mint
+   :P              // PID calculation
+   y e!            // Current error
+   // P term
+   e h 0? * p!     // Error × Kp
+   // I term
+   e i + i!        // Add to integral
+   i h 1? * q!     // × Ki
+   // D term
+   e l - d!        // Derivative
+   d h 2? * v!     // × Kd
+   p q + v + w! ;  // Combine terms
+   ```
+
+### Step 2: Safety Limits
+1. Add these limits to servo output:
+   ```mint
+   :L              // Limit check
+   n h 4? > (      // If > max
+       h 4? n!     // Limit to max
+   )
+   n h 4? -1 * < ( // If < -max
+       h 4? -1 * n!
+   ) ;
+   ```
+
+## Flight Testing
+
+### Step 1: Pre-flight Checks
+1. Run this test sequence:
+   ```mint
+   :T              // Test sequence
+   H               // Init IMU
+   C               // Calibrate
+   5(              // Test each servo
+       #50 /i + n! // Select servo
+       #32 n /O    // Move -30°
+       1000()      // Wait
+       #64 n /O    // Center
+       1000()      // Wait
+       #96 n /O    // Move +30°
+   ) ;
+   ```
+
+### Step 2: Flight Operation
+1. Start the system:
+   ```mint
+   M               // Main sequence
+   ```
+
+2. Monitor output:
+   ```mint
+   :D              // Display data
+   `ROT:` y ,      // Show rotation
+   `SRV:` s , /N ; // Show servo pos
+   ```
+
+## Data Analysis
+
+### Step 1: Recording Flight Data
+1. Log data during flight:
+   ```mint
+   :G              // Log data
+   y l /i ?!       // Store rotation
+   s v /i ?!       // Store servo pos
+   /i 1+ /i! ;     // Next position
+   ```
+
+### Step 2: Analyzing Results
+1. After flight, view data:
+   ```mint
+   :V              // View data
+   100(            // Show 100 points
+       `T` /i .    // Time
+       `R:` l /i ? ,   // Rotation
+       `S:` v /i ? , /N  // Servo
+   ) ;
+   ```
+
+## Troubleshooting Guide
+
+### Problem: Unstable Oscillations
+1. Reduce Kp gain:
+   ```mint
+   #0032 h 0? !    // Set Kp = 0.50
+   ```
+2. Increase Kd gain:
+   ```mint
+   #0028 h 2? !    // Set Kd = 0.40
+   ```
+
+### Problem: Slow Response
+1. Increase Kp gain:
+   ```mint
+   #0096 h 0? !    // Set Kp = 1.50
+   ```
+2. Reduce Ki gain:
+   ```mint
+   #0019 h 1? !    // Set Ki = 0.25
+   ```
+
+### Problem: IMU Errors
+1. Check connection:
+   ```mint
+   :W              // WHO_AM_I check
+   D h 0? F #75 F E
+   D h 1? F G ;    // Should return #68
+   ```
+
+## Safety Features
+
+### Emergency Stop
+1. Add to program:
+   ```mint
+   :S              // Emergency stop
+   #64 #50 /O     // Center all
+   #64 #51 /O     // servos
+   #64 #52 /O     // immediately
+   /F r! ;        // Stop program
+   ```
+
+### Interrupt Handler
+1. Include safety interrupt:
+   ```mint
+   :Z              // Interrupt
+   S ;            // Call stop
+   ```
+
+## Fine-Tuning Tips
+1. Start with conservative gains
+2. Test on ground first
+3. Increase gains gradually
+4. Monitor servo temperature
+5. Keep backup of working values
+
+Remember: Always test thoroughly on the ground before flight testing. 
+
+Start with conservative gain values and gradually increase them while monitoring system stability.
+
