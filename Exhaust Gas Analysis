@@ -1,0 +1,227 @@
+MINT program for exhaust gas analysis with multiple sensor inputs and safety monitoring.
+
+```mint
+// Constants in heap
+:A [
+    #03E8          // CO2 max limit (1000ppm)
+    #0064          // NOx max limit (100ppm)
+    #01F4          // Temperature max (500°C)
+    #0032          // Sample buffer size
+    #0064          // Sample interval (100ms)
+    #0003          // Number of sensors
+    #0002          // Moving average size
+    #00FF          // ADC max value
+] h! ;
+
+// Initialize system
+:B 
+[0 0 0 0 0] c!    // CO2 readings
+[0 0 0 0 0] n!    // NOx readings
+[0 0 0 0 0] t!    // Temperature readings
+0 x!              // Maximum CO2
+0 y!              // Maximum NOx
+0 z!              // Maximum temperature
+/T s!             // System status
+`GAS INIT` /N ;
+
+// Read gas sensors with averaging
+:C
+// CO2 Sensor
+0 m!              // Clear sum
+h 6? (            // Average samples
+    #80 #30 /O    // Select CO2 channel
+    100()         // ADC settling
+    #31 /I        // Read ADC
+    m + m!        // Add to sum
+    10()          // Small delay
+)
+m h 6? / p!       // Calculate average
+p c /i ?!         // Store in buffer
+p x > (           // Update max if higher
+    p x!
+)
+
+// NOx Sensor
+0 m!              // Clear sum
+h 6? (            // Average samples
+    #81 #30 /O    // Select NOx channel
+    100()         // ADC settling
+    #31 /I        // Read ADC
+    m + m!        // Add to sum
+    10()          // Small delay
+)
+m h 6? / p!       // Calculate average
+p n /i ?!         // Store in buffer
+p y > (           // Update max if higher
+    p y!
+)
+
+// Temperature
+0 m!              // Clear sum
+h 6? (            // Average samples
+    #82 #30 /O    // Select temp channel
+    100()         // ADC settling
+    #31 /I        // Read ADC
+    m + m!        // Add to sum
+    10()          // Small delay
+)
+m h 6? / p!       // Calculate average
+p t /i ?!         // Store in buffer
+p z > (           // Update max if higher
+    p z!
+) ;
+
+// Check safety limits
+:D
+c /i ? h 0? > (           // CO2 check
+    `CO2 HIGH` /N
+    /F s!                 // Set alarm
+)
+n /i ? h 1? > (           // NOx check
+    `NOx HIGH` /N
+    /F s!                 // Set alarm
+)
+t /i ? h 2? > (           // Temperature check
+    `TEMP HIGH` /N
+    /F s!                 // Set alarm
+) ;
+
+// Convert raw ADC to real units
+:E
+// CO2 (ppm)
+c /i ? 10 * p!           // Scale to ppm
+// NOx (ppm)
+n /i ? 5 * q!            // Scale to ppm
+// Temperature (°C)
+t /i ? 2 * r! ;          // Scale to °C
+
+// Display current readings
+:F
+`CO2: ` p . `ppm` /N
+`NOx: ` q . `ppm` /N
+`TMP: ` r . `C` /N
+`STATUS: ` s . /N ;
+
+// Plot gas levels (ASCII)
+:G
+`CO2 Trend` /N
+10(                      // 10 rows
+    h 3? (               // Buffer size columns
+        c /j ? #FF /i 10 * - > (
+            `*`
+        ) /E (
+            ` `
+        )
+    )
+    /N
+) ;
+
+// Log data to memory
+:H
+[                       // Create log entry
+    /i                  // Time stamp
+    p                   // CO2 level
+    q                   // NOx level
+    r                   // Temperature
+] l /i ?! ;             // Store in log
+
+// Main analysis loop
+:M
+B                      // Initialize
+/T s!                  // Set status
+/U (                   // Continuous loop
+    s /T = /W          // While running
+    C                  // Read sensors
+    E                  // Convert values
+    D                  // Check limits
+    F                  // Display
+    H                  // Log data
+    /i h 3? = (        // Buffer full
+        G              // Show plot
+        0 /i!          // Reset counter
+    )
+    h 4? ()           // Sample delay
+) ;
+
+// Emergency shutdown
+:S
+`SHUTDOWN` /N
+/F s!                  // Clear status
+1 #40 /O ;             // Activate exhaust fan
+
+// Print analysis report
+:P
+`GAS ANALYSIS REPORT` /N
+`MAX CO2: ` x . `ppm` /N
+`MAX NOx: ` y . `ppm` /N
+`MAX TEMP: ` z . `C` /N
+`Samples: ` /i . /N ;
+
+// Interrupt handler
+:Z
+S ;                    // Emergency shutdown
+
+
+```
+
+Key features of this implementation:
+
+1. **Sensor Management**
+- Multiple gas sensors (CO2, NOx)
+- Temperature monitoring
+- Signal averaging
+- ADC interface
+
+2. **Safety Features**
+- Concentration limits
+- Temperature monitoring
+- Emergency shutdown
+- Exhaust fan control
+
+3. **Data Collection**
+- Real-time monitoring
+- Trend tracking
+- Maximum value recording
+- Complete data logging
+
+4. **Analysis Tools**
+- Unit conversion
+- Trend plotting
+- Statistical tracking
+- Report generation
+
+To use:
+
+```mint
+A    // Load constants
+B    // Initialize
+M    // Start monitoring
+S    // Emergency stop
+P    // Print report
+```
+
+Hardware Interface:
+```
+Port 0x30: ADC control
+Port 0x31: ADC data
+Port 0x40: Fan control
+```
+
+Data Processing:
+1. Raw ADC readings
+2. Moving average filtering
+3. Unit conversion
+4. Trend analysis
+
+Safety Features:
+1. Concentration limits
+2. Temperature monitoring
+3. Automatic shutdown
+4. Ventilation control
+
+add:
+1. More sophisticated gas analysis?
+2. Additional sensor types?
+3. Enhanced data visualization?
+4. More detailed reporting?
+5. Calibration routines?
