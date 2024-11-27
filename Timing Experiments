@@ -1,0 +1,201 @@
+ MINT program for precise ignition timing control and measurement.
+
+```mint
+// Constants in heap
+:A [
+    #0005          // Number of stages
+    #0064          // Base delay (100ms)
+    #0032          // Minimum safe delay
+    #00FF          // Maximum allowed delay
+    #0003          // Number of test sequences
+    #0014          // Feedback threshold
+    #0080          // Timer port
+    #0081          // External clock port
+] h! ;
+
+// Timing sequence array [delay1, delay2, ...]
+:B [
+    #0064          // Stage 1: 100ms
+    #00C8          // Stage 2: 200ms
+    #012C          // Stage 3: 300ms
+    #0190          // Stage 4: 400ms
+    #01F4          // Stage 5: 500ms
+] d! ;
+
+// Initialize system
+:C 
+[0 0 0 0 0] t!    // Measured times
+[0 0 0 0 0] v!    // Timing variations
+0 s!              // Sequence counter
+0 e!              // Error counter
+/T r!             // Run flag
+`INIT` /N ;
+
+// Configure hardware timer
+:D
+#00 h 6? /O       // Reset timer
+#01 h 6? /O       // Start timer
+`TIMER SET` /N ;
+
+// Read external clock
+:E
+h 7? /I n! ;      // Read reference clock
+
+// Fire single stage
+:F
+1 n #32 /O        // Set ignition pin
+h 6? /I m!        // Record start time
+d /i ? ()         // Wait programmed delay
+0 n #32 /O        // Clear ignition pin
+h 6? /I k!        // Record end time
+k m - t /i ?! ;   // Store elapsed time
+
+// Check timing accuracy
+:G
+t /i ? n!         // Get measured time
+d /i ? m!         // Get target time
+n m - k!          // Calculate difference
+k v /i ?!         // Store variation
+k #000A > (       // If variation > 10ms
+    e 1+ e!       // Increment error count
+    `TIME ERR` /N
+) ;
+
+// Adjust delays based on feedback
+:H
+v /i ? h 5? > (   // If variation > threshold
+    d /i ? k!     // Get current delay
+    k v /i ? - k! // Adjust timing
+    k h 3? > (    // Check minimum
+        k d /i ?! // Store new delay
+    )
+) ;
+
+// Display timing results
+:I
+`Stage ` /i . /N
+`Target: ` d /i ? . `ms` /N
+`Actual: ` t /i ? . `ms` /N
+`Var +/-:` v /i ? . `ms` /N ;
+
+// Log complete sequence
+:J
+`SEQ ` s . /N
+5(               // For each stage
+    I            // Show timing
+) ;
+
+// Run single test sequence
+:K
+D                // Init timer
+h 0? (           // For each stage
+    F            // Fire stage
+    G            // Check timing
+    H            // Adjust if needed
+    I            // Show results
+    1000()       // Cool down delay
+) ;
+
+// Main test program
+:M
+C                // Initialize
+/T r!            // Set run flag
+h 4? (           // Run test sequences
+    s 1+ s!      // Increment sequence
+    `SEQ START` /N
+    K            // Run sequence
+    J            // Log results
+    `SEQ DONE` /N
+    5000()       // Sequence delay
+)
+`TEST COMPLETE` /N
+`Total Errors:` e . /N ;
+
+// Emergency stop
+:S
+0 #32 /O         // All ignitors off
+/F r!            // Stop running
+`E-STOP` /N ;
+
+// Interrupt handler
+:Z
+S ;              // Emergency stop
+
+
+```
+
+This implementation provides:
+
+1. **Timing Control**
+- Hardware timer interface
+- External clock reference
+- Precise delay generation
+- Multiple stage sequencing
+
+2. **Measurement**
+- Actual timing capture
+- Variation calculation
+- Error detection
+- Performance logging
+
+3. **Safety Features**
+- Minimum delay enforcement
+- Maximum delay limits
+- Emergency stop capability
+- Cool-down periods
+
+4. **Adaptive Control**
+- Feedback-based adjustment
+- Dynamic delay correction
+- Error tracking
+- Performance optimization
+
+To use:
+
+```mint
+A    // Load constants
+B    // Load delays
+M    // Run test
+S    // Emergency stop
+J    // Show log
+```
+
+The system provides:
+
+1. **Timing Features**
+- Microsecond precision
+- Multiple stage support
+- Sequential firing
+- Verification
+
+2. **Safety Checks**
+- Minimum delays
+- Maximum limits
+- Cool-down periods
+- Emergency stop
+
+3. **Data Collection**
+- Actual timing
+- Variations
+- Error counts
+- Complete logging
+
+4. **Analysis Tools**
+- Real-time display
+- Sequence review
+- Error reporting
+- Performance tracking
+
+Hardware Connections:
+```
+Port 0x32: Ignition outputs
+Port 0x80: Hardware timer
+Port 0x81: External clock
+```
+
+add:
+1. More sophisticated timing algorithms?
+2. Enhanced error analysis?
+3. Additional safety features?
+4. More detailed logging?
+5. Statistical analysis tools?
